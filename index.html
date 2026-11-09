@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>郵便番号検索</title>
+<style>
+  :root {
+    --bg: #F4F6F7;
+    --surface: #FFFFFF;
+    --ink: #1E2327;
+    --sub: #5A636B;
+    --line: #DCE1E5;
+    --red: #CC2229;
+    --red-soft: #FBE9EA;
+    --focus: #1F6FD1;
+    --font: "BIZ UDPGothic", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+    --font-num: "BIZ UDGothic", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #181B1E;
+      --surface: #22262A;
+      --ink: #E6E9EB;
+      --sub: #A0A8AF;
+      --line: #363C42;
+      --red: #F26A6E;
+      --red-soft: #3A2427;
+      --focus: #7DB2F5;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+  .wrap { max-width: 780px; margin: 0 auto; padding: 0 20px; }
+
+  /* 上部：検索と「コピーした番号」の枠 */
+  .top {
+    position: sticky; top: 0; z-index: 2;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+    padding: 20px 0 14px;
+  }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  h1 .mark { color: var(--red); font-size: 26px; line-height: 1; }
+
+  /* はがきの郵便番号記入枠 */
+  .boxes { display: inline-flex; align-items: flex-end; gap: 4px; font-family: var(--font-num); }
+  .boxes .b {
+    width: 1.5em; height: 1.9em;
+    border: 1.5px solid var(--red);
+    display: grid; place-items: center;
+    font-size: 1em; font-weight: 700; font-variant-numeric: tabular-nums;
+    background: var(--surface);
+  }
+  .boxes .gap { width: 10px; height: 1.5px; background: var(--red); margin: 0 2px 0.9em; }
+  .boxes.big { font-size: 22px; }
+  .boxes.big .b.empty { color: transparent; }
+  .clip { display: flex; align-items: center; gap: 10px; color: var(--sub); font-size: 13px; }
+  .clip.flash .boxes .b { animation: fill .45s ease-out both; }
+  .clip.flash .boxes .b:nth-child(2) { animation-delay: .03s; }
+  .clip.flash .boxes .b:nth-child(3) { animation-delay: .06s; }
+  .clip.flash .boxes .b:nth-child(5) { animation-delay: .09s; }
+  .clip.flash .boxes .b:nth-child(6) { animation-delay: .12s; }
+  .clip.flash .boxes .b:nth-child(7) { animation-delay: .15s; }
+  .clip.flash .boxes .b:nth-child(8) { animation-delay: .18s; }
+  @keyframes fill { from { background: var(--red-soft); transform: translateY(-3px); } to { background: var(--surface); transform: none; } }
+
+  .search { margin-top: 14px; position: relative; }
+  .search input {
+    width: 100%;
+    font-size: 20px;
+    padding: 14px 16px;
+    border: 2px solid var(--ink);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+  .search input::placeholder { color: var(--sub); opacity: .8; }
+  .search input:focus-visible { outline-offset: 0; border-color: var(--focus); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 35%, transparent); }
+
+  .meta { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 14px; color: var(--sub); }
+  .meta label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .meta input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--red); }
+  .note { color: var(--ink); }
+
+  /* 結果一覧 */
+  ol.results { list-style: none; margin: 0; padding: 0; }
+  .row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 16px; align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .row .boxes { font-size: 16px; cursor: pointer; background: none; border: 0; padding: 0; }
+  .addr .area { font-size: 13px; color: var(--sub); }
+  .addr .town { font-size: 18px; font-weight: 700; line-height: 1.4; }
+  .addr .town .paren { font-weight: 400; font-size: 14px; color: var(--sub); }
+  .addr .town.none { font-weight: 400; font-size: 15px; color: var(--sub); }
+  .addr .kana { font-size: 12px; color: var(--sub); }
+  .copy {
+    border: 1.5px solid var(--red); color: var(--red); background: var(--surface);
+    padding: 8px 14px; border-radius: 6px; cursor: pointer; white-space: nowrap; font-weight: 700; font-size: 14px;
+    min-width: 7.5em;
+  }
+  .copy:hover { background: var(--red-soft); }
+  .copy.done { background: var(--red); color: var(--surface); }
+  mark { background: var(--red-soft); color: inherit; border-radius: 2px; }
+
+  .more { display: block; margin: 18px auto; padding: 10px 22px; border: 1.5px solid var(--line); background: var(--surface); border-radius: 6px; cursor: pointer; }
+
+  .empty-state { padding: 40px 0; color: var(--sub); }
+  .empty-state p { margin: 0 0 6px; }
+  .empty-state strong { color: var(--ink); }
+
+  /* データ読み込み */
+  .loader { margin: 32px 0; padding: 28px; border: 2px dashed var(--line); border-radius: 8px; background: var(--surface); }
+  .loader.drag { border-color: var(--red); background: var(--red-soft); }
+  .loader h2 { margin: 0 0 8px; font-size: 18px; }
+  .loader p { margin: 0 0 14px; color: var(--sub); font-size: 14px; }
+  .pick { border: 1.5px solid var(--ink); background: var(--surface); padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: 700; }
+
+  footer { padding: 28px 0 40px; font-size: 13px; color: var(--sub); }
+  footer button { background: none; border: 0; padding: 0; color: var(--sub); text-decoration: underline; cursor: pointer; }
+
+  [hidden] { display: none !important; }
+
+  @media (max-width: 600px) {
+    .row { grid-template-columns: 1fr auto; gap: 8px 12px; }
+    .row .boxes { grid-column: 1 / -1; }
+    .clip .label { display: none; }
+    .boxes.big { font-size: 18px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .clip.flash .boxes .b { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="head">
+      <h1><span class="mark" aria-hidden="true">〒</span>郵便番号検索</h1>
+      <div class="clip" id="clip" aria-live="polite">
+        <span class="label" id="clipLabel">コピーした番号</span>
+        <span class="boxes big" id="clipBoxes"></span>
+      </div>
+    </div>
+    <div class="search">
+      <input id="q" type="search" autocomplete="off" spellcheck="false"
+             placeholder="住所を入力（例：日向市本町、ひゅうがし）" aria-label="住所" disabled>
+    </div>
+    <div class="meta">
+      <span id="status">データを読み込んでいます…</span>
+      <label><input type="checkbox" id="hyphen" checked> ハイフン付きでコピー</label>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="loader" id="loader" hidden>
+    <h2>郵便番号データを選んでください</h2>
+    <p>data.js が見つかりませんでした。日本郵便の utf_ken_all.csv（または KEN_ALL.CSV）を選ぶか、ここにドロップしてください。ファイルはこのパソコンの中だけで読み込みます。</p>
+    <button class="pick" id="pickBtn" type="button">CSVファイルを選ぶ</button>
+  </section>
+
+  <ol class="results" id="results"></ol>
+  <button class="more" id="more" type="button" hidden></button>
+  <div class="empty-state" id="empty" hidden></div>
+
+  <footer>
+    <span id="source"></span>
+    <button type="button" id="reloadBtn" hidden>別のCSVを読み込む</button>
+  </footer>
+</main>
+
+<input type="file" id="file" accept=".csv,text/csv" hidden>
+
+<!-- 同じフォルダの data.js を読み込みます（file:// でも動作します） -->
+<script src="data.js"></script>
+<script>
+(() => {
+  "use strict";
+
+  const PAGE = 100;          // 1回に表示する件数
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    q: $("q"), status: $("status"), results: $("results"), more: $("more"),
+    empty: $("empty"), loader: $("loader"), file: $("file"), pickBtn: $("pickBtn"),
+    reloadBtn: $("reloadBtn"), source: $("source"), hyphen: $("hyphen"),
+    clip: $("clip"), clipBoxes: $("clipBoxes"), clipLabel: $("clipLabel"),
+  };
+
+  let records = [];          // 検索対象
+  let hits = [];             // 現在の検索結果
+  let shown = 0;
+  let lastTokens = [];
+
+  /* ---------- 文字の正規化 ---------- */
+  // 全角英数→半角、ひらがな→カタカナ、ヶ/ヵ→ケ、ハイフン類の統一、空白除去
+  function norm(s) {
+    return s.normalize("NFKC")
+      .replace(/[\u3041-\u3096]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60))
+      .replace(/[ヶヵ]/g, "ケ")
+      .replace(/[‐‑‒–—―−－]/g, "-")
+      .replace(/\s+/g, "")
+      .toLowerCase();
+  }
+
+  /* ---------- データの組み立て ---------- */
+  // fields: [郵便番号, 読み都道府県, 読み市区町村, 読み町域, 都道府県, 市区町村, 町域]
+  function buildRecords(rows) {
+    const merged = [];
+    // 旧形式 KEN_ALL では、長い町域名が「（」〜「）」の途中で複数行に分割されていることがあるので結合する
+    let open = null;
+    for (const f of rows) {
+      if (open && open[0] === f[0] && open[5] === f[5]) {
+        open[3] += f[3];
+        open[6] += f[6];
+        if (f[6].includes("）")) open = null;
+        continue;
+      }
+      open = null;
+      const r = f.slice();
+      merged.push(r);
+      if (r[6].includes("（") && !r[6].includes("）")) open = r;
+    }
+
+    return merged.map(([zip, kp, kc, kt, pref, city, town]) => {
+      let base = town, paren = "", none = "";
+      // 町域名として意味を持たない表記を整理（none には代わりに表示する説明を入れる）
+      if (town === "以下に掲載がない場合") {
+        base = ""; none = "一覧にない町域";
+      } else if (/の次に.*番地がくる場合$/.test(town)) {
+        base = ""; none = "町域名がなく、市区町村名の次に番地が続く地域";
+      } else if (town.endsWith("一円") && town.length > 2 && city.endsWith(town.slice(0, -2))) {
+        base = ""; none = "全域";
+      } else {
+        const m = town.match(/^(.*?)（(.*)）$/);
+        if (m) { base = m[1]; paren = m[2]; }
+      }
+      if (/^(次のビルを除く|地階・階層不明)$/.test(paren)) paren = "";
+      const kanaTown = none ? "" : kt.replace(/（.*$/, "");
+      return {
+        zip, pref, city, base, paren, none,
+        kana: [kp, kc, kanaTown].filter(Boolean).join(" "),
+        key: norm(pref + city + base),
+        keyParen: norm(paren),
+        keyKana: norm(kp + kc + kanaTown),
+        keyTown: norm(base),
+      };
+    });
+  }
+
+  function parseTsv(text) {
+    return text.split("\n").filter(Boolean).map((l) => l.split("\t"));
+  }
+
+  function parseCsv(text) {
+    const out = [];
+    for (const line of text.split(/\r?\n/)) {
+      if (!line) continue;
+      const cells = [];
+      let cur = "", q = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (q) {
+          if (c === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+          else cur += c;
+        } else if (c === '"') q = true;
+        else if (c === ",") { cells.push(cur); cur = ""; }
+        else cur += c;
+      }
+      cells.push(cur);
+      if (cells.length >= 9) out.push([2, 3, 4, 5, 6, 7, 8].map((i) => cells[i].trim()));
+    }
+    return out;
+  }
+
+  function setData(rows, sourceText) {
+    records = buildRecords(rows);
+    els.loader.hidden = true;
+    els.q.disabled = false;
+    els.reloadBtn.hidden = false;
+    els.source.textContent = sourceText + "　";
+    els.status.textContent = `${records.length.toLocaleString()} 件の郵便番号から検索できます`;
+    els.q.focus();
+    if (els.q.value) search();
+    else showIntro();
+  }
+
+  /* ---------- 検索 ---------- */
+  function matchAll(tokens) {
+    const res = [];
+    for (const r of records) {
+      let ok = true;
+      for (const t of tokens) {
+        if (/^\d{3}-?\d{0,4}$/.test(t) && r.zip.startsWith(t.replace("-", ""))) continue;
+        if (r.key.includes(t) || r.keyKana.includes(t) || (r.keyParen && r.keyParen.includes(t))) continue;
+        ok = false; break;
+      }
+      if (ok) res.push(r);
+    }
+    return res;
+  }
+
+  // 町域名がぴったり一致するもの → 住所の末尾で一致するもの → その他 の順に並べる
+  function rank(list, tokens) {
+    const last = tokens[tokens.length - 1];
+    const score = (r) => (r.keyTown === last ? 0 : r.key.endsWith(last) ? 1 : r.none ? 3 : 2);
+    return list.map((r, i) => [score(r), i, r]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
+  }
+
+  function search() {
+    const raw = els.q.value;
+    let tokens = raw.split(/[\s　]+/).map(norm).filter(Boolean);
+    els.results.innerHTML = "";
+    els.more.hidden = true;
+    els.empty.hidden = true;
+    if (!tokens.length) { hits = []; showIntro(); return; }
+
+    let result = matchAll(tokens);
+    let fallback = "";
+
+    // 番地まで入力された場合などに、後ろを削りながら一致する町域を探す（語が1つのときだけ）
+    if (!result.length && tokens.length === 1) {
+      let t = tokens[0];
+      const cut = t.search(/[0-9]/);
+      if (cut > 1) {
+        t = t.slice(0, cut);
+        result = matchAll([t]);
+      }
+      while (!result.length && t.length > 3) {
+        t = t.slice(0, -1);
+        result = matchAll([t]);
+      }
+      if (result.length) { fallback = t; tokens = [t]; }
+    }
+
+    hits = rank(result, tokens);
+    lastTokens = tokens;
+    shown = 0;
+
+    if (!hits.length) {
+      els.status.textContent = "0 件";
+      els.empty.hidden = false;
+      els.empty.innerHTML = `<p><strong>一致する住所がありません。</strong></p>
+        <p>市区町村名だけ、または町域名だけで検索してみてください。読みがな（ひらがな・カタカナ）でも探せます。</p>`;
+      return;
+    }
+    els.status.innerHTML = `${hits.length.toLocaleString()} 件` +
+      (fallback ? `　<span class="note">「${esc(fallback)}」までで一致した結果です</span>` : "");
+    renderMore();
+  }
+
+  function renderMore() {
+    const frag = document.createDocumentFragment();
+    const end = Math.min(shown + PAGE, hits.length);
+    for (let i = shown; i < end; i++) frag.appendChild(renderRow(hits[i]));
+    els.results.appendChild(frag);
+    shown = end;
+    const rest = hits.length - shown;
+    els.more.hidden = rest <= 0;
+    els.more.textContent = `さらに表示（残り ${rest.toLocaleString()} 件）`;
+  }
+
+  function renderRow(r) {
+    const li = document.createElement("li");
+    li.className = "row";
+    const z = formatZip(r.zip);
+    const townHtml = r.none
+      ? `<div class="town none">${esc(r.none)}</div>`
+      : `<div class="town">${hl(r.base)}${r.paren ? `<span class="paren">（${hl(r.paren)}）</span>` : ""}</div>`;
+    li.innerHTML = `
+      <button class="boxes" type="button" aria-label="${z} をコピー">${boxesHtml(r.zip)}</button>
+      <div class="addr">
+        <div class="area">${hl(r.pref)} ${hl(r.city)}</div>
+        ${townHtml}
+        <div class="kana">${esc(r.kana)}</div>
+      </div>
+      <button class="copy" type="button">コピー</button>`;
+    const btn = li.querySelector(".copy");
+    const doCopy = () => copyZip(r.zip, btn);
+    btn.addEventListener("click", doCopy);
+    li.querySelector(".boxes").addEventListener("click", doCopy);
+    return li;
+  }
+
+  function showIntro() {
+    els.status.textContent = `${records.length.toLocaleString()} 件の郵便番号から検索できます`;
+    els.empty.hidden = false;
+    els.empty.innerHTML = `<p><strong>住所の一部を入力すると、候補がすぐに表示されます。</strong></p>
+      <p>「日向市 本町」のように空白で区切ると絞り込めます。番地まで入力しても、町域名までで探します。</p>`;
+  }
+
+  /* ---------- 表示用 ---------- */
+  function esc(s) {
+    return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // 入力語と一致した部分を強調（正規化で文字数が変わらない範囲で）
+  function hl(text) {
+    const n = norm(text);
+    if (n.length !== text.length) return esc(text);
+    const marks = new Array(text.length).fill(false);
+    for (const t of lastTokens) {
+      if (t.length < 1) continue;
+      if (n.length >= 2 && t.includes(n)) { marks.fill(true); continue; }   // 「日向市本町」で「本町」も強調
+      let i = n.indexOf(t);
+      while (i !== -1) { for (let k = i; k < i + t.length; k++) marks[k] = true; i = n.indexOf(t, i + 1); }
+    }
+    let out = "", on = false;
+    for (let i = 0; i < text.length; i++) {
+      if (marks[i] !== on) { out += marks[i] ? "<mark>" : "</mark>"; on = marks[i]; }
+      out += esc(text[i]);
+    }
+    return out + (on ? "</mark>" : "");
+  }
+
+  const formatZip = (zip) => `${zip.slice(0, 3)}-${zip.slice(3)}`;
+
+  function boxesHtml(zip) {
+    const d = (zip || "       ").padEnd(7, " ").split("");
+    const b = (c) => `<span class="b${c === " " ? " empty" : ""}">${c === " " ? "0" : c}</span>`;
+    return d.slice(0, 3).map(b).join("") + `<span class="gap" aria-hidden="true"></span>` + d.slice(3).map(b).join("");
+  }
+
+  /* ---------- コピー ---------- */
+  async function copyZip(zip, btn) {
+    const text = els.hyphen.checked ? formatZip(zip) : zip;
+    let ok = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      }
+    } catch (_) { /* 下の方法で再試行 */ }
+    if (!ok) ok = legacyCopy(text);
+
+    if (!ok) { btn.textContent = "コピーできません"; return; }
+    btn.textContent = "コピーしました";
+    btn.classList.add("done");
+    clearTimeout(btn._t);
+    btn._t = setTimeout(() => { btn.textContent = "コピー"; btn.classList.remove("done"); }, 1600);
+
+    els.clipBoxes.innerHTML = boxesHtml(zip);
+    els.clipLabel.textContent = `${text} をコピーしました`;
+    els.clip.classList.remove("flash");
+    void els.clip.offsetWidth;
+    els.clip.classList.add("flash");
+  }
+
+  function legacyCopy(text) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (_) {}
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  /* ---------- CSVファイルの読み込み ---------- */
+  async function loadFile(file) {
+    els.status.textContent = `${file.name} を読み込んでいます…`;
+    const buf = await file.arrayBuffer();
+    let text;
+    try { text = new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+    catch (_) { text = new TextDecoder("shift_jis").decode(buf); }   // 旧形式 KEN_ALL.CSV
+    const rows = parseCsv(text.replace(/^\uFEFF/, ""));
+    if (!rows.length || !/^\d{7}$/.test(rows[0][0])) {
+      els.status.textContent = `${file.name} は郵便番号データの形式ではありません。utf_ken_all.csv を選んでください。`;
+      return;
+    }
+    setData(rows, `データ：${file.name}`);
+  }
+
+  els.pickBtn.addEventListener("click", () => els.file.click());
+  els.reloadBtn.addEventListener("click", () => els.file.click());
+  els.file.addEventListener("change", () => { if (els.file.files[0]) loadFile(els.file.files[0]); els.file.value = ""; });
+
+  ["dragover", "dragenter"].forEach((ev) => document.addEventListener(ev, (e) => { e.preventDefault(); els.loader.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach((ev) => document.addEventListener(ev, (e) => { e.preventDefault(); els.loader.classList.remove("drag"); }));
+  document.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+
+  /* ---------- 入力イベント ---------- */
+  let timer;
+  let composing = false;
+  els.q.addEventListener("compositionstart", () => { composing = true; });
+  els.q.addEventListener("compositionend", () => { composing = false; search(); });
+  els.q.addEventListener("input", () => {
+    if (composing) return;          // 日本語変換中は検索しない
+    clearTimeout(timer);
+    timer = setTimeout(search, 120);
+  });
+  els.more.addEventListener("click", renderMore);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "/" && document.activeElement !== els.q) { e.preventDefault(); els.q.focus(); els.q.select(); }
+  });
+
+  els.clipBoxes.innerHTML = boxesHtml("");
+
+  /* ---------- 起動 ---------- */
+  if (typeof window.KEN_ALL_TSV === "string") {
+    // 描画を先に済ませてから組み立てる
+    setTimeout(() => {
+      setData(parseTsv(window.KEN_ALL_TSV), "データ：data.js");
+      window.KEN_ALL_TSV = null;
+    }, 0);
+  } else {
+    els.status.textContent = "データが読み込まれていません";
+    els.loader.hidden = false;
+  }
+})();
+</script>
+</body>
+</html>
